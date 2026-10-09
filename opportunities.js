@@ -9,8 +9,9 @@
 // 6. تصحيح حسابات تواريخ الإغلاق والتقويم دون تأثر بفروق المناطق الزمنية
 // 7. إضافة زر "إضافة فرصة جديدة" مباشرة في شريط الإجراءات
 // =========================================================================
+
 import { db } from './firebase-config.js';
-import { collection, onSnapshot, doc, setDoc, deleteDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { collection, onSnapshot, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 // دعم دفاعي بديل لـ SweetAlert2
 const SafeSwal = {
