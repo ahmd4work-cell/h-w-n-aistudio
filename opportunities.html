@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ASGate - الفرص البيعية</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -46,6 +46,8 @@
     <div class="main-content">
         <div class="action-bar">
             <button class="btn-top btn-add" onclick="insertNewOpportunityRow()"><i class="fas fa-plus"></i> إضافة فرصة جديدة</button>
+            <button class="btn-top btn-current-month" onclick="scrollToCurrentMonthSeparator(true)" title="الانتقال لفاصل الشهر الحالي فوراً"><i class="fas fa-calendar-day"></i> الشهر الحالي</button>
+            
             <div class="search-wrapper">
                 <input type="text" id="searchInput" class="search-input" placeholder="بحث في الصفحة 🔍" onkeyup="debouncedFilterTable()">
             </div>
@@ -55,8 +57,8 @@
                 <div class="stat-item">هذا الشهر (مهتم): <span id="stat-month" class="stat-val">0</span></div>
                 <div class="stat-item">اليوم (مهتم): <span id="stat-today" class="stat-val">0</span></div>
                 <div class="stat-divider">|</div>
-                <div class="stat-item">القيمة الإجمالية (مهتم): <span id="stat-value-total" class="stat-val" style="color: #059669; background: #ecfdf5;">0</span></div>
-                <div class="stat-item">قيمة الشهر (مهتم): <span id="stat-value-month" class="stat-val" style="color: #059669; background: #ecfdf5;">0</span></div>
+                <div class="stat-item">القيمة الإجمالية: <span id="stat-value-total" class="stat-val" style="color: #059669; background: #ecfdf5;">0</span></div>
+                <div class="stat-item">قيمة الشهر: <span id="stat-value-month" class="stat-val" style="color: #059669; background: #ecfdf5;">0</span></div>
             </div>
 
             <div class="bulk-action-wrapper">
