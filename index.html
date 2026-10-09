@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة القيادة - مبيعات | ASGate CRM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="./main.css">
+    
+    <!-- تحميل مكتبة Chart.js بأمان -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        #navbarPlaceholder {
+            height: 58px;
+            min-height: 58px;
+            max-height: 58px;
+            flex-shrink: 0;
+            width: 100%;
+            background: #ffffff;
+            display: block;
+            box-sizing: border-box;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        body { opacity: 1 !important; }
+    </style>
+</head>
+<body>
+
+<div id="navbarPlaceholder">
+    <nav class="top-navbar" data-unified="true">
+        <div style="display:flex; align-items:center; gap:20px; height:100%;">
+            <div class="nav-brand">
+                <i class="fas fa-layer-group" style="color:#2563eb;"></i> ASGate
+            </div>
+            <ul class="nav-links">
+                <li><a href="./index.html" id="nav-index" class="active"><i class="fas fa-home"></i> الرئيسية</a></li>
+                <li><a href="./visits.html" id="nav-visits"><i class="fas fa-map-marker-alt"></i> الزيارات</a></li>
+                <li><a href="./opportunities.html" id="nav-opportunities"><i class="fas fa-lightbulb"></i> الفرص</a></li>
+                <li><a href="./customers.html" id="nav-customers"><i class="fas fa-users"></i> العملاء</a></li>
+                <li><a href="./sales.html" id="nav-sales"><i class="fas fa-shopping-cart"></i> المبيعات</a></li>
+                <li><a href="./reminders.html" id="nav-reminders"><i class="fas fa-bell"></i> التذكيرات</a></li>
+            </ul>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; height:100%;">
+            <div class="nav-search-container">
+                <div class="nav-search-input-wrapper">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="globalSearchInput" placeholder="بحث شامل في النظام...">
+                </div>
+                <div id="searchResults" class="search-results-dropdown"></div>
+            </div>
+            <div class="nav-actions">
+                <button class="nav-btn" id="darkModeToggle" title="الوضع الليلي"><i class="fas fa-moon"></i></button>
+            </div>
+        </div>
+    </nav>
+</div>
+
+<div class="employee-info-bar">
+    <div class="info-content">
+        <div class="info-item">الموظف: <span id="empNameDisplay">Hamza Mohamady</span></div>
+        <div class="info-item">الرقم: <span id="empCodeDisplay">SAL2026</span></div>
+        <div class="info-item">المشروع: <span id="empProjectDisplay">ASGate - المبيعات الميدانية</span></div>
+    </div>
+</div>
+
+<div class="container">
+    <div class="dashboard-grid">
+        <div class="right-section">
+            <div class="content-box" style="height: 100%;">
+                <div class="box-header">
+                    <h3>📅 سجل الأهداف والزيارات والفرص</h3>
+                    <div class="header-actions">
+                        <span id="syncStatus" style="font-size: 11px; margin-left: 10px; font-weight: 700;"></span>
+                        <button type="button" id="exportCsvBtn" class="toggle-blur-btn" title="تصدير إلى CSV">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
+                        <button type="button" id="editTargetBtn" class="toggle-blur-btn" title="تعديل أهداف المبيعات">
+                            <i class="fas fa-pen"></i>
+                        </button>
+                        <button type="button" id="toggleBlurBtn" class="toggle-blur-btn" title="إخفاء / إظهار الأرقام">
+                            <i id="eyeIcon" class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="table-wrapper-dashboard">
+                    <table class="yearly-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 20%;">الشهر</th>
+                                <th>هدف</th>
+                                <th>مكتمل</th>
+                                <th class="thick-border">معلق</th>
+                                <th>الزيارات</th>
+                                <th>الفرص</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthsBody"></tbody>
+                        <tfoot>
+                            <tr class="total-row">
+                                <td>الإجمالي</td>
+                                <td id="totTarget">180,000</td>
+                                <td id="totCompleted" style="color: var(--light-green); font-weight: 700;">0</td>
+                                <td id="totPending" class="thick-border" style="color: #f59e0b; font-weight: 700;">0</td>
+                                <td id="totVisits">0</td>
+                                <td id="totOpps">0</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <div class="monthly-distribution-section">
+                    <div class="dist-item">
+                        <div class="dist-chart-container">
+                            <canvas id="monthlyCompletedChart"></canvas>
+                            <div class="chart-center-label">مكتمل</div>
+                        </div>
+                    </div>
+                    <div class="dist-item">
+                        <div class="dist-chart-container">
+                            <canvas id="monthlyVisitsChart"></canvas>
+                            <div class="chart-center-label">الزيارات</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="left-section">
+            <div class="filters-container-wrapper">
+                <div class="filters-grid">
+                    <div class="filter-card"><label>الفرع</label><select id="filterRegion" class="filter-input"><option value="all">الكل</option></select></div>
+                    <div class="filter-card"><label>المشرف</label><select id="filterSupervisor" class="filter-input"><option value="all">الكل</option></select></div>
+                    <div class="filter-card"><label>المندوب</label><select id="filterSalesman" class="filter-input"><option value="all">الكل</option></select></div>
+                    <div class="filter-card"><label>السنة</label><select id="filterYear" class="filter-input"><option value="2026">2026</option><option value="all">الكل</option></select></div>
+                    <div class="filter-card"><label>الشهر</label><select id="filterMonth" class="filter-input"><option value="all">الكل</option></select></div>
+                </div>
+                <button id="resetFiltersBtn" class="reset-filters-btn" title="إعادة ضبط جميع الفلاتر">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+
+            <div class="stats-cards">
+                <div class="stat-card bg-primary">
+                    <div class="label-text" id="targetCardLabel">الهدف السنوي</div>
+                    <div class="value-text" id="yearlyTargetCardVal">180,000</div>
+                </div>
+                <div class="stat-card bg-light-green"><div class="label-text">المبيعات</div><div class="value-text" id="salesValue">0</div></div>
+                <div class="stat-card bg-warning"><div class="label-text">المعلق</div><div class="value-text" id="pendingValue">0</div></div>
+                <div class="stat-card bg-gray" style="flex:0.6"><div class="label-text">الزيارات</div><div class="value-text" id="visitCount">0</div></div>
+                <div class="stat-card bg-gray" style="flex:0.6"><div class="label-text">الفرص</div><div class="value-text" id="oppCount">0</div></div>
+            </div>
+
+            <div class="content-box">
+                <h3>📈 تحليل الأداء الإجمالي</h3>
+                <div class="charts-row">
+                    <div class="chart-item-wrapper">
+                        <div class="chart-container-reduced">
+                            <canvas id="achievedChart"></canvas>
+                            <div class="chart-percentage" id="achievedPct">0%</div>
+                        </div>
+                        <div class="chart-label">مكتمل</div>
+                        <div class="chart-sublabel" id="achievedSubLabel">0 / 180,000</div>
+                    </div>
+                    <div class="chart-item-wrapper" style="flex: 0.6;">
+                        <div class="gauge-container-reduced">
+                            <canvas id="gaugeChart"></canvas>
+                            <div class="gauge-value" id="gaugePct">0%</div>
+                        </div>
+                        <div class="chart-label" style="margin-top: 10px;">مؤشر الإنجاز</div>
+                    </div>
+                    <div class="chart-item-wrapper">
+                        <div class="chart-container-reduced">
+                            <canvas id="pendingChart"></canvas>
+                            <div class="chart-percentage" id="pendingPct">0%</div>
+                        </div>
+                        <div class="chart-label">المعلق</div>
+                        <div class="chart-sublabel" id="pendingSubLabel">0 / 180,000</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content-box quarters-box">
+                <h3 id="quarterTitleHeader">تحليل مبيعات الأرباع السنوية</h3>
+                <div class="quarters-row">
+                    <div class="quarter-item">
+                        <div class="quarter-chart-container"><canvas id="q1Chart"></canvas></div>
+                        <div class="quarter-pct" id="q1Pct">0%</div>
+                        <div class="quarter-label">الربع الأول<br><small>(يناير - مارس)</small></div>
+                    </div>
+                    <div class="quarter-item">
+                        <div class="quarter-chart-container"><canvas id="q2Chart"></canvas></div>
+                        <div class="quarter-pct" id="q2Pct">0%</div>
+                        <div class="quarter-label">الربع الثاني<br><small>(أبريل - يونيو)</small></div>
+                    </div>
+                    <div class="quarter-item">
+                        <div class="quarter-chart-container"><canvas id="q3Chart"></canvas></div>
+                        <div class="quarter-pct" id="q3Pct">0%</div>
+                        <div class="quarter-label">الربع الثالث<br><small>(يوليو - سبتمبر)</small></div>
+                    </div>
+                    <div class="quarter-item">
+                        <div class="quarter-chart-container"><canvas id="q4Chart"></canvas></div>
+                        <div class="quarter-pct" id="q4Pct">0%</div>
+                        <div class="quarter-label">الربع الرابع<br><small>(أكتوبر - ديسمبر)</small></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-box staff-performance-section">
+        <h3>👥 أداء فريق المبيعات (الموظفين النشطين)</h3>
+        <div style="flex-grow: 1; position: relative; height: 220px;">
+            <canvas id="staffChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="./navbar.js"></script>
+<script type="module" src="./main.js"></script>
+
+</body>
+</html>

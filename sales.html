@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المبيعات | ASGate CRM</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- مكتبة التنبيهات مع دعم Fallback مدمج -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <!-- مكتبة SheetJS لاستيراد وتصدير الإكسيل -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    
+    <!-- حجز مساحة النافبار لمنع الرعشة -->
+    <style>
+        * { box-sizing: border-box; }
+        #navbarPlaceholder {
+            height: 58px;
+            min-height: 58px;
+            max-height: 58px;
+            flex-shrink: 0;
+            width: 100%;
+            background: #ffffff;
+            display: block;
+            box-sizing: border-box;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .dashboard-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            opacity: 1 !important;
+        }
+        .table-wrapper { min-height: 200px; }
+    </style>
+    <link rel="stylesheet" href="./sales.css">
+</head>
+<body>
+
+<div class="dashboard-container">
+    <!-- Navbar ثابت لمنع الرعشة -->
+    <div id="navbarPlaceholder">
+        <nav class="top-navbar" data-unified="true">
+            <div style="display:flex; align-items:center; gap:20px; height:100%;">
+                <div class="nav-brand">
+                    <i class="fas fa-layer-group" style="color:#2563eb;"></i> ASGate
+                </div>
+                <ul class="nav-links">
+                    <li><a href="./index.html" id="nav-index"><i class="fas fa-home"></i> الرئيسية</a></li>
+                    <li><a href="./visits.html" id="nav-visits"><i class="fas fa-map-marker-alt"></i> الزيارات</a></li>
+                    <li><a href="./opportunities.html" id="nav-opportunities"><i class="fas fa-lightbulb"></i> الفرص</a></li>
+                    <li><a href="./customers.html" id="nav-customers"><i class="fas fa-users"></i> العملاء</a></li>
+                    <li><a href="./sales.html" id="nav-sales" class="active"><i class="fas fa-shopping-cart"></i> المبيعات</a></li>
+                    <li><a href="./reminders.html" id="nav-reminders"><i class="fas fa-bell"></i> التذكيرات</a></li>
+                </ul>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; height:100%;">
+                <div class="nav-search-container">
+                    <div class="nav-search-input-wrapper">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" id="globalSearchInput" placeholder="بحث شامل في النظام...">
+                    </div>
+                    <div id="searchResults" class="search-results-dropdown"></div>
+                </div>
+                <div class="nav-actions">
+                    <button class="nav-btn" id="darkModeToggle" title="الوضع الليلي"><i class="fas fa-moon"></i></button>
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <div class="action-bar">
+            <button class="btn-top btn-add" onclick="openOrderModal()">
+                <i class="fas fa-plus"></i> إنشاء طلب مبيعات جديد
+            </button>
+            <div class="search-wrapper">
+                <input type="text" id="globalSearch" class="search-input" placeholder="بحث 🔍" onkeyup="filterSalesTable()">
+            </div>
+            
+            <div class="stats-bar-visit" id="statsContainer">
+                <div class="stat-item">الطلبات: <span id="count-total" class="stat-val">0</span></div>
+                <div class="stat-item">الشهر: <span id="month-count" class="stat-val">0</span></div>
+                <div class="stat-divider">|</div>
+                <div class="stat-item">مكتمل: <span id="sum-completed" class="stat-val" style="color: #16a34a; background: var(--bg-success-light);">0.00</span></div>
+                <div class="stat-item">معلق: <span id="sum-pending" class="stat-val" style="color: #ea580c; background: var(--bg-warning-light);">0.00</span></div>
+                <div class="stat-divider">|</div>
+                <div class="stat-item">مكتمل الشهر: <span id="month-completed" class="stat-val" style="color: #16a34a; background: var(--bg-success-light);">0.00</span></div>
+                <div class="stat-item">معلق الشهر: <span id="month-pending" class="stat-val" style="color: #ea580c; background: var(--bg-warning-light);">0.00</span></div>
+                
+                <button onclick="toggleStatsVisibility()" id="eyeToggleBtn" style="background:transparent; border:none; cursor:pointer; color:var(--text-muted); font-size:15px; margin-right:auto; padding:0 5px;" title="إخفاء / إظهار الأرقام">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+
+            <!-- تحديث الإجراءات الجماعية -->
+            <div class="bulk-action-wrapper">
+                <button class="btn-bulk-trigger" onclick="toggleDropdown(event, this)">
+                    إجراءات جماعية <i class="fas fa-chevron-down" style="font-size:10px;"></i>
+                </button>
+                <div class="dropdown-menu">
+                    <button onclick="handleBulkAction('تغيير المستخدم')"><i class="fas fa-user-edit"></i> تغيير المستخدم</button>
+                    <button onclick="handleBulkAction('استيراد')"><i class="fas fa-file-import"></i> استيراد (جديد)</button>
+                    <button onclick="handleBulkAction('تصدير')"><i class="fas fa-file-export"></i> تصدير للإكسيل</button>
+                    <button onclick="handleBulkAction('طباعة')"><i class="fas fa-print"></i> طباعة</button>
+                    <hr style="border:none; border-top:1px solid var(--border-soft); margin: 4px 0;">
+                    <button class="del-btn" onclick="handleBulkAction('حذف')"><i class="fas fa-trash-alt"></i> حذف المحدد</button>
+                </div>
+            </div>
+            
+            <!-- حقل مخفي لرفع ملف الإكسيل -->
+            <input type="file" id="excelUpload" accept=".xlsx, .xls, .csv" style="display: none;" onchange="handleExcelImport(event)">
+        </div>
+        
+        <div class="table-wrapper">
+            <table id="salesTable">
+                <thead>
+                    <tr>
+                        <th style="width: 3%;">
+                            <input type="checkbox" class="select-check" onclick="toggleAllCheckboxes(this)">
+                        </th>
+                        <th style="width: 7%;">رقم الطلب</th>
+                        <th style="width: 20%;">اسم الطلب</th>
+                        <th style="width: 8%;">تاريخ الإنشاء</th>
+                        <th style="width: 16%;">الشركة</th>
+                        <th style="width: 9%;">السجل الرئيسي</th>
+                        <th style="width: 9%;">
+                            <div class="th-filter-wrapper" onclick="toggleFilterMenu(event, 'statusFilterMenu')">
+                                الحالة <i class="fas fa-caret-down filter-icon"></i>
+                            </div>
+                            <div id="statusFilterMenu" class="filter-menu" onclick="event.stopPropagation()"></div>
+                        </th>
+                        <th style="width: 7%;">مكتمل</th>
+                        <th style="width: 7%;">معلق</th>
+                        <th style="width: 7%;">تاريخ التعديل</th>
+                        <th style="width: 7%;">
+                            <div class="th-filter-wrapper" onclick="toggleFilterMenu(event, 'userFilterMenu')">
+                                المستخدم <i class="fas fa-caret-down filter-icon"></i>
+                            </div>
+                            <div id="userFilterMenu" class="filter-menu" onclick="event.stopPropagation()"></div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody id="salesBody"></tbody>
+            </table>
+        </div>
+
+        <div id="activityLogSection" class="activity-log-section">
+            <div class="activity-log-header-container">
+                <div class="activity-log-title"><i class="fas fa-history"></i> سجل نشاط المبيعات</div>
+                <button id="toggleExpandBtn" class="btn-toggle-expand" onclick="toggleLogExpansion()" title="توسيع / تقليص">
+                    <i class="fas fa-expand-alt"></i>
+                </button>
+            </div>
+            <div id="activityList" class="activity-list"></div>
+        </div>
+    </div>
+</div>
+
+<div id="orderModal" class="modal">
+    <div class="modal-content-box" id="orderModalCard">
+        <div style="font-weight: 800; font-size:14px; color: var(--text-dark); margin-bottom: 20px; text-align: center; display:flex; align-items:center; justify-content:center; gap:8px;">
+            <i class="fas fa-file-invoice-dollar" style="color:var(--accent-blue)"></i> إنشاء طلب مبيعات جديد
+        </div>
+        <div class="form-group">
+            <label>البحث بالاسم أو السجل (رئيسي وفرعي)</label>
+            <input type="text" id="mSearchField" onkeyup="searchCustomerInModal(this)" placeholder="ابحث عن عميل موجود..." autocomplete="off">
+            <div id="mResults" class="modal-results"></div>
+        </div>
+        <div class="form-group">
+            <label>الشركة</label>
+            <input type="text" id="mComp" readonly style="background:var(--bg-color); color:var(--text-muted); cursor:not-allowed;">
+        </div>
+        <div class="form-group">
+            <label>السجل الرئيسي</label>
+            <input type="text" id="mCr" readonly style="background:var(--bg-color); color:var(--text-muted); cursor:not-allowed;">
+        </div>
+        <div class="form-group">
+            <label>اسم الطلب</label>
+            <input type="text" id="mType" placeholder="مثال: توريد وتجهيز سنترال">
+        </div>
+        <div style="display:flex; justify-content: flex-end; gap:10px; margin-top:10px;">
+            <button onclick="closeOrderModal()" style="flex:1; background:var(--bg-color); border:1px solid var(--border-soft); color:var(--text-dark); padding:10px; border-radius:8px; cursor:pointer; font-family:Cairo; font-size:12px; font-weight:700; transition:0.2s;">إلغاء</button>
+            <button onclick="addOrderRow()" style="flex:1; background:var(--accent-blue); border:none; color:white; padding:10px; border-radius:8px; cursor:pointer; font-family:Cairo; font-size:12px; font-weight:800; transition:0.2s; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);">إضافة الطلب</button>
+        </div>
+    </div>
+</div>
+
+<!-- استدعاء ملفات الجافاسكريبت الموحدة -->
+<script type="module" src="./navbar.js"></script>
+<script type="module" src="./sales.js"></script>
+</body>
+</html>

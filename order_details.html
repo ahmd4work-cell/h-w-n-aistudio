@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تفاصيل الطلب | ASGate</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="order_details.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body>
+
+    <!-- الشريط العلوي -->
+    <nav class="navbar">
+        <a href="sales.html" class="btn-back-nav">رجوع</a>
+    </nav>
+
+    <div class="container">
+        <div class="sticky-top-section">
+            <div class="header-section-wrapper">
+                <div class="order-header-info">
+                    <div class="info-item"><span class="info-label">رقم الطلب</span><span class="info-value" id="orderId">#0000</span></div>
+                    <div class="info-item info-item-highlight"><span class="info-label">اسم الطلب</span><span class="info-value" id="orderType">-</span></div>
+                    <div class="info-item"><span class="info-label">الشركة</span><span class="info-value" id="orderComp">-</span></div>
+                    <div class="info-item"><span class="info-label">السجل</span><span class="info-value" id="orderCr">-</span></div>
+                    <div class="info-item"><span class="info-label">حالة الطلب</span><span class="info-value" id="orderStatus">-</span></div>
+                    <div class="info-item"><span class="info-label">قيمة الطلب</span><span class="info-value" id="orderTotalSum">0.0 ر.س</span></div>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-add" onclick="openModal()">+ إضافة منتج جديد</button>
+                <div class="search-wrapper">
+                    <input type="text" id="liveSearch" class="search-input" placeholder="بحث بالسريال أو الخدمة أو هوية المستخدم..." onkeyup="applyFilters()">
+                    <button class="btn-global-notes" id="globalNotesBtn" onclick="openGlobalNote()" title="سجل ملاحظات تفاصيل الطلب"><i class="fas fa-envelope"></i></button>
+                </div>
+                
+                <div class="stats-container">
+                    <div class="stats-box right-box">
+                        <span class="stat-label">الاجمالي</span>
+                        <span>مكتمل: <span id="stat_total_ok" class="stat-val-green">0.0</span></span>
+                        <span>معلق: <span id="stat_total_wait" class="stat-val-orange">0.0</span></span>
+                    </div>
+                    <div class="stats-box left-box">
+                        <span class="stat-label">الشهر</span>
+                        <span>مكتمل: <span id="stat_month_ok" class="stat-val-green">0.0</span></span>
+                        <span>معلق: <span id="stat_month_wait" class="stat-val-orange">0.0</span></span>
+                    </div>
+                </div>
+
+                <!-- زر الإجراءات المحدث -->
+                <div class="dropdown">
+                    <button class="btn-action">إجراءات جماعية ⚙️</button>
+                    <div class="dropdown-content">
+                        <!-- تم إضافة استيراد وحذف المحدد والتصدير بالترتيب المطلوب -->
+                        <button onclick="document.getElementById('excelFileInput').click()">استيراد من إكسيل</button>
+                        <button onclick="triggerActionLog('تصدير Excel')">تصدير إكسيل</button>
+                        <button onclick="triggerActionLog('طباعة')">طباعة</button>
+                        <button style="color:red;" onclick="triggerActionLog('حذف المحدد')">حذف المحدد</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table id="mainTable">
+                <thead>
+                    <tr id="dynamicHeader"></tr>
+                </thead>
+                <tbody id="productsBody"></tbody>
+                <tfoot>
+                    <tr class="table-footer">
+                        <td id="f_selection">0</td> 
+                        <td id="f_count">0</td>
+                        <td></td>
+                        <td id="f_qty">0</td>
+                        <td id="f_sub">0.0</td>
+                        <td id="f_total">0.0</td>
+                        <td colspan="6"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- سجل النشاط الرئيسي -->
+        <div id="activityLogSection" class="activity-log-section">
+            <div class="activity-log-header-container">
+                <div class="activity-log-title"><i class="fas fa-history"></i> سجل النشاط</div>
+                <button id="toggleExpandBtn" class="btn-toggle-expand" onclick="toggleLogExpansion()" title="توسيع / تقليص"><i class="fas fa-expand-alt"></i></button>
+            </div>
+            <div id="activityList" class="activity-list"></div>
+        </div>
+    </div>
+
+    <!-- حقل مخفي لرفع ملف الإكسيل للاستيراد -->
+    <input type="file" id="excelFileInput" accept=".xlsx, .xls" style="display:none;" onchange="handleExcelImport(event)">
+
+    <!-- نافذة الملاحظات المنبثقة -->
+    <div id="noteModal" class="modal-notes">
+        <div class="modal-notes-content">
+            <div style="font-weight: 800; color: #1e293b; font-size:14px; margin-bottom: 15px; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-sticky-note" style="color:var(--accent-blue)"></i> سجل الملاحظات
+            </div>
+            <div id="historyLog" class="history-log"></div>
+            
+            <div>
+                <textarea id="modalTextArea" class="note-area" placeholder="أدخل تفاصيل الملاحظة هنا..."></textarea>
+                <input type="file" id="fileUploadInput" onchange="handleFileUpload(event)" style="display:none;">
+            </div>
+
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-top:15px;">
+                <button onclick="document.getElementById('fileUploadInput').click()" title="إرفاق ملف" style="background: none; border: none; color: #64748b; font-size: 20px; cursor: pointer; transition: 0.2s; padding: 0;"><i class="fas fa-paperclip"></i></button>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="closeGlobalNote()" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#475569; padding:8px 20px; border-radius:6px; cursor:pointer; font-family:Cairo; font-size:11.5px; font-weight:700; transition:0.2s;">إلغاء</button>
+                    <button onclick="saveGlobalNote()" style="background:var(--accent-blue); border:none; color:white; padding:8px 20px; border-radius:6px; cursor:pointer; font-family:Cairo; font-size:11.5px; font-weight:800; transition:0.2s; box-shadow: 0 2px 4px rgba(59,130,246,0.3);">حفظ الملاحظة</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة إضافة منتج -->
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <h3>إضافة منتج جديد</h3>
+            <label style="font-size: 11px; font-weight: bold; color: #64748b;">نوع المنتج</label>
+            <select id="p_type" onchange="handleTypeChange()">
+                <option value="جوال">جوال</option>
+                <option value="بيانات">بيانات</option>
+                <option value="هاتف">هاتف</option>
+                <option value="فايبر">فايبر</option>
+                <option value="DIA">DIA</option>
+                <option value="SIP Trunk">SIP Trunk</option>
+                <option value="Ipvpn">Ipvpn</option>
+            </select>
+            <label style="font-size: 11px; font-weight: bold; color: #64748b;">تفاصيل المنتج</label>
+            <input type="text" id="p_name" placeholder="تفاصيل المنتج (مثال: باقة 200 جيجا)">
+            <div class="form-row-grid">
+                <div>
+                    <label style="font-size: 11px; font-weight: bold; color: #64748b;">قيمة الاشتراك</label>
+                    <input type="text" id="p_sub" placeholder="قيمة الاشتراك" oninput="this.value = this.value.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1');">
+                </div>
+                <div>
+                    <label style="font-size: 11px; font-weight: bold; color: #64748b;">العدد</label>
+                    <input type="text" id="p_qty" value="1" placeholder="العدد" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                </div>
+            </div>
+            <label style="font-size: 11px; font-weight: bold; color: #64748b;">السريال</label>
+            <div class="serial-wrapper">
+                <input type="text" id="p_serial" placeholder="السريال" oninput="this.value = this.value.replace(/[^0-9]/g, '');">
+                <div class="auto-serial-container">
+                    <input type="checkbox" id="auto_serial">
+                    <label for="auto_serial">تسلسل تلقائي</label>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top: 5px;">
+                <button class="btn" style="flex:1; background:var(--header-green); justify-content:center;" onclick="saveProduct()">حفظ</button>
+                <button class="btn" style="flex:1; background:var(--danger-red); justify-content:center;" onclick="closeModal()">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="order_details.js"></script>
+</body>
+</html>
