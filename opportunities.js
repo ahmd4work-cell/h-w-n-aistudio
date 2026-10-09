@@ -789,7 +789,14 @@ function printOpportunities() {
     printWindow.focus();
     setTimeout(() => { printWindow.print(); printWindow.close(); }, 500);
 }
-window.printOpportunities = printOpportunities;
+
+if (rowsToPrint.length === 0) {
+            SafeSwal.fire({icon: 'info', text: 'لا توجد بيانات للطباعة', confirmButtonText: 'حسناً', confirmButtonColor: '#3b82f6'});
+            return;
+        }
+        // كود الطباعة الفعلي يوضع هنا
+    }
+    window.printOpportunities = printOpportunities;
 
 const EXCEL_HEADER_MAP = {
     'الشركة': 'comp',
@@ -1696,3 +1703,9 @@ window.showStatusTooltip = showStatusTooltip;
 window.hideStatusTooltip = hideStatusTooltip;
 window.openWhatsAppChat = openWhatsAppChat;
 window.toggleSubTable = toggleSubTable;
+
+document.addEventListener('DOMContentLoaded', () => {
+    listenToOpportunities();
+    loadLogsData();
+});
+
