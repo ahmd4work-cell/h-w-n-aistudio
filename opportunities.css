@@ -1,0 +1,171 @@
+/* =========================================================================
+   opportunities.css - تنسيقات الحالة وألوان رابح وفقدان
+========================================================================= */
+
+:root {
+    --nav-shiny-navy: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    --header-shiny-purple: linear-gradient(180deg, #4c1d95 0%, #2e1065 100%);
+    --nav-bg: #0f172a;
+    --nav-active: #a78bfa;
+    --bg-color: #f8fafc;
+    --white: #ffffff;
+    --accent-blue: #3b82f6;
+    --accent-blue-hover: #2563eb;
+    --accent-green-active: #22c55e;
+    --border-soft: #e2e8f0;
+    --text-dark: #0f172a;
+    --text-muted: #64748b;
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+html, body {
+    height: 100%; margin: 0; padding: 0; overflow: hidden;
+    background-color: var(--bg-color); font-family: 'Cairo', sans-serif;
+    font-size: 12px; line-height: 1.2; color: var(--text-dark);
+    direction: rtl;
+}
+
+.dashboard-container { 
+    display: flex; 
+    flex-direction: column; 
+    height: 100vh; 
+    box-sizing: border-box; 
+    width: 100%;
+    overflow: hidden;
+}
+
+/* الألوان الخاصة بحالة رابح وفقدان */
+.status-won-cell {
+    background-color: #00B050 !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border-radius: 4px !important;
+}
+
+.status-lost-cell {
+    background-color: #C00000 !important;
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    border-radius: 4px !important;
+}
+
+/* فواصل الأشهر */
+.month-separator td { 
+    height: 32px !important; 
+    padding: 4px 0 !important; 
+    border: none !important; 
+    background: #f8fafc !important; 
+}
+
+.sep-text { 
+    width: max-content; 
+    padding: 0 24px; 
+    margin: 0 auto; 
+    color: #ffffff; 
+    font-weight: 800; 
+    font-size: 11.5px; 
+    background-color: #0070C0;
+    border-radius: 6px; 
+    text-align: center; 
+    height: 26px; 
+    line-height: 26px; 
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sep-current-month {
+    background-color: #7030A0 !important; 
+    box-shadow: 0 2px 8px rgba(112, 48, 160, 0.3); 
+}
+
+.current-month-separator td { background: #f0f7ff !important; }
+
+/* عرض الأعمدة */
+#mainTable { table-layout: fixed !important; width: 100% !important; min-width: 1250px; border-collapse: collapse; }
+.table-wrapper { overflow-y: auto !important; overflow-x: auto !important; background: white; border-radius: 10px; border: 1px solid var(--border-soft); flex: 1; min-height: 200px; box-shadow: 0 4px 6px -1px rgba(0,0,0,.05); position: relative; scroll-behavior: smooth; }
+
+.col-select { width: 4% !important; }
+.col-company { width: 12% !important; }
+.col-address { width: 9% !important; }
+.col-manager { width: 8% !important; }
+.col-mobile { width: 9% !important; }
+.col-email { width: 8% !important; }
+.col-record { width: 7% !important; }
+.col-date { width: 7% !important; }
+.col-service { width: 8% !important; }
+.col-val { width: 4.5% !important; }
+.col-notes { width: 9% !important; }
+.col-status { width: 6.5% !important; }
+.col-edit { width: 7% !important; }
+.col-owner { width: 8% !important; }
+
+.main-content { flex: 1; display: flex; flex-direction: column; padding: 0 15px 10px; min-height: 0; gap: 8px; }
+.action-bar { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-top: 5px; z-index: 100; }
+.search-wrapper { position: relative; width: 180px; min-width: 150px; display: flex; align-items: center; flex-shrink: 0; }
+.search-input { width: 100%; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-soft); background: #fff; font-family: 'Cairo'; font-size: 11px; font-weight: 600; outline: none; }
+
+th { 
+    background: var(--header-shiny-purple); 
+    color: white; 
+    padding: 0 8px; 
+    font-size: 11px !important; 
+    font-weight: 800 !important; 
+    text-align: center; 
+    border-bottom: 3px solid #2e1065; 
+    position: sticky; 
+    top: 0; 
+    z-index: 50; 
+    height: 42px !important; 
+}
+
+td { 
+    border-bottom: 1px solid #f1f5f9; 
+    text-align: center; 
+    height: 40px; 
+    font-size: 10px; 
+    font-weight: 700; 
+    padding: 0 4px;
+}
+
+tbody tr.main-row { height: 40px !important; }
+tbody tr.main-row:hover td { background-color: #FFF2CC !important; }
+
+.excel-input { 
+    width: 96%; 
+    border: 1px solid transparent; 
+    border-radius: 4px; 
+    text-align: center; 
+    font-family: 'Cairo', sans-serif; 
+    outline: none; 
+    background: transparent; 
+    font-size: 10px; 
+    color: inherit; 
+    font-weight: 700; 
+    height: 32px; 
+    margin: 0 auto; 
+}
+
+tbody tr.main-row.closed-row td, 
+tbody tr.main-row.row-shrink td { 
+    height: 25px !important; 
+    font-size: 9px !important; 
+    padding: 0 !important; 
+}
+
+.notes-preview { width: 95%; height: 26px; border: 1px dashed #cbd5e1; border-radius: 4px; background: #f8fafc; font-family: 'Cairo'; font-size: 10px; text-align: center; cursor: pointer; color: var(--accent-blue); font-weight: 700; display: block; margin: 0 auto; line-height: 26px; }
+
+.activity-log-section { 
+    margin: 0; padding: 6px 20px; background: #ffffff; border-radius: 10px; border: 1px solid var(--border-soft); 
+    height: 70px; display: flex; flex-direction: column; box-sizing: border-box; transition: height 0.3s; 
+}
+.activity-log-section.expanded { height: 180px; }
+.activity-list { flex: 1; overflow-y: auto; text-align: right; font-size: 9.5px; }
+
+/* التقويم والمودال */
+.calendar-overlay, .modal-notes { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; background: rgba(15,23,42,0.45); align-items: center; justify-content: center; }
+.calendar-overlay.active, .modal-notes.active { display: flex; }
