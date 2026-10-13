@@ -103,13 +103,13 @@ table {
     table-layout: fixed; 
 }
 
-/* خلايا رأس الجدول (th): حجم الخط 11px بوزن 800 وارتفاع 42px */
+/* خلايا رأس الجدول (th): حجم الخط 11px بوزن 800 وارتفاع 40px */
 th { 
     background: var(--header-shiny-purple); color: white; padding: 0 8px; 
     font-size: 11px !important; font-weight: 800 !important; text-align: center; 
     border-bottom: 3px solid #2e1065; position: sticky; top: 0; z-index: 50; 
-    height: 42px !important; letter-spacing: .3px; 
-    line-height: 42px !important; 
+    height: 40px !important; letter-spacing: .3px; 
+    line-height: 40px !important; 
 }
 
 /* خلايا الجدول العادية (td): حجم الخط 10px بوزن 700 وارتفاع 38px وخطوط أفقية 1px بلون #e1e4e8 */
@@ -426,14 +426,14 @@ body.dark-mode .filter-dot { box-shadow: 0 0 0 2px #0f172a; }
    التعديلات المطلوبة - تطبيق المواصفات النهائية بدقة
    ============================================================ */
 
-/* 1. خلايا رأس الجدول th: 11px وزن 800 وارتفاع 42px */
+/* 1. خلايا رأس الجدول th: 11px وزن 800 وارتفاع 40px */
 th {
     font-size: 11px !important;
     font-weight: 800 !important;
-    height: 42px !important;
-    min-height: 42px !important;
-    max-height: 42px !important;
-    line-height: 42px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    line-height: 40px !important;
 }
 
 /* 2. خلايا الجدول العادية td ومربعات الإدخال: 10px وزن 700 وارتفاع 38px */
