@@ -1,0 +1,1072 @@
+// ==========================================
+// order_details.js - تفاصيل الطلب سحابياً ومحلياً
+// النسخة المحدثة والمصححة بالكامل:
+// 1. فرز عمود الحالة (الكل يظهر كل الصفوف، تفريغ يخفي كل الصفوف)
+// 2. سهم خروج القائمة بجوار كلمة الحالة في نفس السطر
+// 3. تحديد الصفوف الظاهرة فقط حسب الفرز الحالي
+// 4. رأس الجدول th بارتفاع 38px وخط 11px بوزن 800 في أعلى الجدول دائماً
+// 5. صفوف الجدول td بارتفاع 35px وخط 10px بوزن 700 بدون أي تمدد غير طبيعي
+// 6. عمود (رقم التواصل) مميز بخط 11px بوزن 700
+// 7. صف (فقدان) بارتفاع 25px وخط 9px بوزن 600
+// 8. الصف الأسود (تذييل المجاميع) دائماً بالأسفل فوق سجل النشاط مباشرة
+// 9. تحسين مربعات التعديل لتجنب المربعات السوداء المشوهة
+// ==========================================
+import { db } from './firebase-config.js';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const urlParams = new URLSearchParams(window.location.search);
+let currentOrderId = urlParams.get('id') || urlParams.get('orderId') || urlParams.get('code') || localStorage.getItem('current_order_id') || "25010001";
+localStorage.setItem('current_order_id', currentOrderId);
+
+const statusOptions = ["مكتمل", "معلق", "جديد", "مرتجع", "فقدان"];
+
+const LOGS_KEY = 'asgate_order_logs_' + (currentOrderId || 'unknown');
+const GLOBAL_NOTES_KEY = 'asgate_global_notes_' + (currentOrderId || 'unknown');
+
+// الفلاتر النشطة لعمود الحالة (الافتراضي: الكل محدد)
+let activeStatusFilters = [...statusOptions];
+let totalStatusOptionsCount = statusOptions.length;
+
+const defaultSampleProducts = {
+    "25010001": [
+        { docId: "prod_01", orderId: "25010001", type: "جوال", name: "باقة أعمال متميزة 100", qty: 2, sub: 150.0, serial: "8996601002341", mobile: "0501234567", user: "1023456789", status: "مكتمل", date: "14/01/2025", rowNote: "تم التفعيل وتسليم الشريحة" },
+        { docId: "prod_02", orderId: "25010001", type: "بيانات", name: "شريحة بيانات 5G مفتوحة", qty: 1, sub: 350.0, serial: "8996601002342", mobile: "0507654321", user: "1023456789", status: "مكتمل", date: "14/01/2025", rowNote: "جاهز للاستخدام" },
+        { docId: "prod_03", orderId: "25010001", type: "جوال", name: "باقة اتصال مرن 50", qty: 3, sub: 75.0, serial: "8996601002343", mobile: "0509876543", user: "1023456789", status: "معلق", date: "15/01/2025", rowNote: "بانتظار توثيق نفاذ" },
+        { docId: "prod_04", orderId: "25010001", type: "جوال", name: "باقة هاتف إضافية", qty: 1, sub: 50.0, serial: "8996601002344", mobile: "0503344556", user: "1023456789", status: "فقدان", date: "16/01/2025", rowNote: "تم الإلغاء لعدم السداد" }
+    ],
+    "25010002": [
+        { docId: "prod_11", orderId: "25010002", type: "فايبر", name: "فايبر أعمال 500 ميجا", qty: 1, sub: 1200.0, sai: "SAI-RYD-042", coords: "24.7136, 46.6753", city: "الرياض", status: "معلق", date: "20/01/2025", rowNote: "بانتظار تمديد الكيبل الداخلي" },
+        { docId: "prod_12", orderId: "25010002", type: "DIA", name: "خط ربط مخصص Dedicated 100M", qty: 1, sub: 3500.0, sai: "SAI-JED-011", coords: "21.5433, 39.1728", city: "جدة", status: "مكتمل", date: "21/01/2025", rowNote: "تم التركيب والتشغيل بنجاح" }
+    ],
+    "25010003": [
+        { docId: "prod_21", orderId: "25010003", type: "SIP Trunk", name: "قنوات اتصال صوتي SIP 30", qty: 1, sub: 1800.0, sai: "SIP-RYD-001", coords: "24.7742, 46.7385", city: "الرياض", status: "مكتمل", date: "28/01/2025", rowNote: "تم ربط السنترال بنجاح" }
+    ]
+};
+
+function escapeHTML(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatNumberWithOneDecimal(num) {
+    return Number(num).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+// فحص ظهور الصف الحالي (ليس مخفياً بالفرز أو البحث)
+function isRowVisible(row) {
+    if (!row) return false;
+    if (row.style.display === 'none') return false;
+    if (row.classList.contains('hidden')) return false;
+    if (row.offsetParent === null && window.getComputedStyle(row).display === 'none') return false;
+    return true;
+}
+window.isRowVisible = isRowVisible;
+
+// تحديث حالة مربع التحديد الرئيسي (رأس الجدول)
+function updateMasterCheckboxState() {
+    const masterCb = document.getElementById('checkAllBox');
+    if (!masterCb) return;
+
+    const visibleRows = Array.from(document.querySelectorAll('#productsBody tr')).filter(isRowVisible);
+    if (visibleRows.length === 0) {
+        masterCb.checked = false;
+        masterCb.indeterminate = false;
+        return;
+    }
+
+    const visibleChecks = visibleRows.map(r => r.querySelector('.row-checkbox')).filter(Boolean);
+    const checkedCount = visibleChecks.filter(c => c.checked).length;
+
+    if (checkedCount === 0) {
+        masterCb.checked = false;
+        masterCb.indeterminate = false;
+    } else if (checkedCount === visibleChecks.length) {
+        masterCb.checked = true;
+        masterCb.indeterminate = false;
+    } else {
+        masterCb.checked = false;
+        masterCb.indeterminate = true;
+    }
+}
+window.updateMasterCheckboxState = updateMasterCheckboxState;
+
+// تحديد الصفوف الظاهرة فقط عند الضغط على مربع التحديد في رأس الجدول
+function toggleAll(source) {
+    const isChecked = !!(source && source.checked);
+    const rows = document.querySelectorAll('#productsBody tr');
+    rows.forEach(row => {
+        const chk = row.querySelector('.row-checkbox');
+        if (!chk) return;
+        if (isRowVisible(row)) {
+            chk.checked = isChecked;
+        } else {
+            chk.checked = false;
+        }
+    });
+    updateMasterCheckboxState();
+    calculateTotals();
+}
+window.toggleAll = toggleAll;
+
+function toggleLogExpansion() {
+    const section = document.getElementById('activityLogSection');
+    const btn = document.getElementById('toggleExpandBtn');
+    if (!section || !btn) return;
+    if (section.classList.contains('expanded')) {
+        section.classList.remove('expanded');
+        document.body.classList.remove('log-expanded');
+        btn.innerHTML = '<i class="fas fa-expand-alt"></i>';
+    } else {
+        section.classList.add('expanded');
+        document.body.classList.add('log-expanded');
+        btn.innerHTML = '<i class="fas fa-compress-alt"></i>';
+    }
+}
+
+function getTodayFormatted() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getTimeFormatted() {
+    const d = new Date();
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function generateInlineHeaderHTML() {
+    const timeFormatted = getTimeFormatted();
+    return `<span class="log-header-info">
+                <span class="log-badge-user"><i class="fas fa-user"></i> أحمد</span>
+                <span class="log-sep">|</span>
+                <span class="log-timestamp"><i class="fas fa-calendar-alt"></i> ${getTodayFormatted()} <i class="fas fa-clock" style="margin-right:3px;"></i> ${timeFormatted}</span>
+            </span>`;
+}
+
+function addToActivityLog(fieldName, oldVal, newVal, productIdentifier) {
+    const allowedFields = ["تفاصيل المنتج", "العدد", "الاشتراك", "رقم السريال", "رقم الخدمة", "رقم التواصل", "هوية المستخدم", "سجل المتابعة", "الحالة", "إضافة منتج جديد", "زر إجراء"];
+    if (!allowedFields.includes(fieldName)) return; 
+
+    if (oldVal === newVal && fieldName !== "إضافة منتج جديد" && fieldName !== "زر إجراء") return;
+    const headerHTML = generateInlineHeaderHTML();
+    
+    let actionText = "";
+    if (fieldName === "إضافة منتج جديد") {
+        const cleanId = (productIdentifier && String(productIdentifier).trim() !== "") ? productIdentifier : "بدون رقم";
+        actionText = `إضافة منتج جديد: ${newVal} للمنتج (${cleanId})`;
+    } else if (fieldName === "زر إجراء") {
+        actionText = `تم تنفيذ إجراء: [${newVal}] على الطلب الحالي`;
+    } else {
+        const cleanId = (productIdentifier && String(productIdentifier).trim() !== "") ? productIdentifier : "بدون رقم";
+        const val1 = (oldVal && String(oldVal).trim() !== "") ? oldVal : "فارغ";
+        const val2 = (newVal && String(newVal).trim() !== "") ? newVal : "فارغ";
+        actionText = `تغيير ${fieldName} من [${val1}] إلى [${val2}] للمنتج (${cleanId})`;
+    }
+    
+    const fullLogHTML = `<div class="log-entry">${headerHTML} <span class="log-sep">|</span> <span class="log-action">${actionText}</span></div>`;
+    
+    let logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
+    logs.unshift(fullLogHTML);
+    const updatedLogs = logs.slice(0, 100);
+    localStorage.setItem(LOGS_KEY, JSON.stringify(updatedLogs));
+    
+    renderActivityLog();
+}
+
+function triggerActionLog(actionType) {
+    if (actionType === 'تصدير Excel') {
+        exportToExcel();
+        addToActivityLog('زر إجراء', '', 'تصدير لملف Excel', '');
+    } else if (actionType === 'طباعة') {
+        addToActivityLog('زر إجراء', '', 'طباعة الصفحة', '');
+        window.print();
+    } else if (actionType === 'حذف المحدد') {
+        deleteSelected();
+    }
+}
+
+function renderActivityLog() {
+    const list = document.getElementById('activityList');
+    if(!list) return;
+    const logs = JSON.parse(localStorage.getItem(LOGS_KEY) || '[]');
+    list.innerHTML = logs.join(''); 
+}
+
+async function loadOrderDetails() {
+    if (!currentOrderId) {
+        const urlParams = new URLSearchParams(window.location.search);
+        currentOrderId = urlParams.get('id') || urlParams.get('orderId') || urlParams.get('code') || localStorage.getItem('current_order_id') || "25010001";
+    }
+    localStorage.setItem('current_order_id', currentOrderId);
+
+    let orderData = null;
+
+    try {
+        if (db) {
+            const salesDoc = await getDoc(doc(db, "sales", currentOrderId));
+            if (salesDoc.exists()) {
+                orderData = salesDoc.data();
+            }
+        }
+    } catch (e) {
+        console.warn("خطأ في جلب بيانات المبيعات من السحابة: ", e);
+    }
+
+    if (!orderData) {
+        let saved = JSON.parse(localStorage.getItem('asgate_sales_db') || '[]');
+        orderData = saved.find(s => String(s.id) === String(currentOrderId));
+    }
+
+    if (orderData) {
+        if (document.getElementById('orderId')) document.getElementById('orderId').innerText = '#' + (orderData.id || currentOrderId);
+        if (document.getElementById('orderType')) document.getElementById('orderType').innerText = orderData.type || orderData.name || '-';
+        if (document.getElementById('orderComp')) document.getElementById('orderComp').innerText = orderData.comp || orderData.company || orderData.customer || '-';
+        if (document.getElementById('orderCr')) document.getElementById('orderCr').innerText = orderData.cr || orderData.commercialRecord || '-';
+        if (document.getElementById('orderStatus')) document.getElementById('orderStatus').innerText = orderData.status || '-';
+    } else {
+        if (document.getElementById('orderId')) document.getElementById('orderId').innerText = '#' + currentOrderId;
+    }
+
+    // تهيئة المنتجات الافتراضية إذا لم تكن موجودة بعد
+    let dbProducts = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+    if (!dbProducts[currentOrderId] || dbProducts[currentOrderId].length === 0) {
+        if (defaultSampleProducts[currentOrderId]) {
+            dbProducts[currentOrderId] = defaultSampleProducts[currentOrderId];
+        } else {
+            dbProducts[currentOrderId] = [
+                { docId: "prod_gen_1", orderId: currentOrderId, type: "جوال", name: "باقة اتصال مرن 100", qty: 2, sub: 120.0, serial: "8996602001111", mobile: "0551122334", user: "1098765432", status: "مكتمل", date: new Date().toLocaleDateString('en-GB'), rowNote: "تم التفعيل بنجاح" },
+                { docId: "prod_gen_2", orderId: currentOrderId, type: "بيانات", name: "شريحة بيانات أعمال 5G", qty: 1, sub: 250.0, serial: "8996602001112", mobile: "0559988776", user: "1098765432", status: "معلق", date: new Date().toLocaleDateString('en-GB'), rowNote: "بانتظار استلام الشريحة" }
+            ];
+        }
+        localStorage.setItem('asgate_products_db', JSON.stringify(dbProducts));
+    }
+
+    listenToProducts();
+    renderActivityLog();
+    setupScrollSync();
+}
+
+// مزامنة التمرير الأفقي بين جدول البيانات وشريط المجاميع السفلي
+function setupScrollSync() {
+    const bodyScroll = document.getElementById('tableBodyScroll');
+    const footerContainer = document.getElementById('tableFooterContainer');
+    if (bodyScroll && footerContainer) {
+        bodyScroll.addEventListener('scroll', () => {
+            footerContainer.scrollLeft = bodyScroll.scrollLeft;
+        });
+    }
+}
+
+function listenToProducts() {
+    try {
+        if (db) {
+            const productsRef = collection(db, "products");
+            onSnapshot(productsRef, (snapshot) => {
+                if (snapshot && !snapshot.empty) {
+                    const dbProducts = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+                    snapshot.forEach((docSnap) => {
+                        const data = docSnap.data();
+                        const orderKey = data.orderId || currentOrderId;
+                        if (!dbProducts[orderKey]) dbProducts[orderKey] = [];
+                        const existingIdx = dbProducts[orderKey].findIndex(p => p.docId === docSnap.id);
+                        if (existingIdx > -1) {
+                            dbProducts[orderKey][existingIdx] = { docId: docSnap.id, ...data };
+                        } else {
+                            dbProducts[orderKey].push({ docId: docSnap.id, ...data });
+                        }
+                    });
+                    localStorage.setItem('asgate_products_db', JSON.stringify(dbProducts));
+                    renderProducts();
+                }
+            }, (err) => {
+                console.warn("إشعار الاستماع السحابي للمنتجات:", err);
+            });
+        }
+    } catch(err) {
+        console.warn("العمل في الوضع المحلي للمنتجات:", err);
+    }
+    renderProducts();
+}
+
+function validateNumberInput(el, isFloat = false) {
+    let originalText = el.innerText;
+    let cleanedText = originalText;
+    if (isFloat) cleanedText = originalText.replace(/[^0-9.]/g, '').replace(/(\..*?)\..*/g, '$1');
+    else cleanedText = originalText.replace(/[^0-9]/g, '');
+    
+    if (originalText !== cleanedText) {
+        el.innerText = cleanedText;
+        let range = document.createRange();
+        let sel = window.getSelection();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+}
+
+function renderProducts(filtered = null) {
+    const dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+    let baseItems = dbData[currentOrderId] || [];
+    
+    baseItems.forEach(p => { if (!statusOptions.includes(p.status)) p.status = "جديد"; });
+    
+    let items = (filtered || baseItems).map((p, i) => ({...p, originalIndex: i}));
+    
+    // الفرز التسلسلي التصاعدي حسب رقم السريال
+    items.sort((a, b) => {
+        let sA = String(a.serial || "");
+        let sB = String(b.serial || "");
+        if (!sA && !sB) return 0;
+        if (!sA) return 1;
+        if (!sB) return -1;
+        return sA.localeCompare(sB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    
+    updateTableHeaders(items.length > 0 ? items[0].type : "جوال");
+    const tbody = document.getElementById('productsBody');
+    if(!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; padding:25px; color:#64748b; font-weight:700; height:60px;">لا توجد منتجات مسجلة لهذا الطلب</td></tr>`;
+        calculateTotals();
+        updateStatsBox();
+        updateMasterCheckboxState();
+        return;
+    }
+
+    items.forEach((p) => {
+        const subVal = parseFloat(p.sub) || 0;
+        
+        let sClass = "";
+        if (p.status === "مكتمل") sClass = "status-mektamel";
+        else if (p.status === "معلق") sClass = "status-moallaq";
+        else if (p.status === "مرتجع") sClass = "status-mortaja";
+        else if (p.status === "فقدان") sClass = "status-faqd";
+
+        const isLocked = ["مكتمل", "معلق"].includes(p.status);
+        const isLoss = (p.status === "فقدان");
+        const pIden = p.mobile || p.serial || p.name;
+        const rNote = p.rowNote || '';
+
+        let dynamic = (p.type === "جوال" || p.type === "بيانات") ? `
+            <td style="width: 130px;" contenteditable="${!isLocked}" data-old="${p.serial||''}" onfocus="this.setAttribute('data-old', this.innerText)" oninput="window.validateNumberInput(this, false)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('رقم السريال', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'serial',this.innerText); }">${p.serial||''}</td>
+            <td style="width: 120px;" class="col-contact" contenteditable="${!isLocked}" data-old="${p.mobile||''}" onfocus="this.setAttribute('data-old', this.innerText)" oninput="window.validateNumberInput(this, false)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('رقم التواصل', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'mobile',this.innerText); }">${p.mobile||''}</td>
+            <td style="width: 120px;" contenteditable="${!isLocked}" data-old="${p.user||''}" onfocus="this.setAttribute('data-old', this.innerText)" oninput="window.validateNumberInput(this, false)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('هوية المستخدم', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'user',this.innerText); }">${p.user||''}</td>` : `
+            <td style="width: 130px;" contenteditable="${!isLocked}" data-old="${p.sai||''}" onfocus="this.setAttribute('data-old', this.innerText)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.updateField(${p.originalIndex},'sai',this.innerText); }">${p.sai||''}</td>
+            <td style="width: 120px;" contenteditable="${!isLocked}" data-old="${p.coords||''}" onfocus="this.setAttribute('data-old', this.innerText)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.updateField(${p.originalIndex},'coords',this.innerText); }">${p.coords||''}</td>
+            <td style="width: 120px;" contenteditable="${!isLocked}" data-old="${p.city||''}" onfocus="this.setAttribute('data-old', this.innerText)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.updateField(${p.originalIndex},'city',this.innerText); }">${p.city||''}</td>`;
+
+        tbody.innerHTML += `<tr class="${isLocked ? 'row-locked' : ''} ${isLoss ? 'row-loss' : ''}">
+            <td style="width: 35px;" class="not-locked"><input type="checkbox" class="row-checkbox" data-index="${p.originalIndex}" data-locked="${isLocked}" data-docid="${p.docId || ''}" onchange="window.calculateTotals(); window.updateMasterCheckboxState();"></td>
+            <td style="width: 100px;">${p.type}</td>
+            <td style="width: 180px;" contenteditable="${!isLocked}" data-old="${p.name}" onfocus="this.setAttribute('data-old', this.innerText)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('تفاصيل المنتج', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'name',this.innerText); }">${p.name}</td>
+            <td style="width: 50px;" contenteditable="${!isLocked}" data-old="${p.qty}" onfocus="this.setAttribute('data-old', this.innerText)" oninput="window.validateNumberInput(this, false)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('العدد', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'qty',this.innerText); }">${p.qty}</td>
+            <td style="width: 80px;" contenteditable="${!isLocked}" data-old="${subVal.toFixed(1)}" onfocus="this.setAttribute('data-old', this.innerText)" oninput="window.validateNumberInput(this, true)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('الاشتراك', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'sub',this.innerText); }">${formatNumberWithOneDecimal(subVal)}</td>
+            <td style="width: 85px; color:var(--header-green);font-weight:800;">${formatNumberWithOneDecimal(p.qty * subVal)}</td>
+            ${dynamic}
+            <td style="width: 110px;" class="not-locked"><select class="status-select ${sClass}" data-old="${p.status}" onfocus="this.setAttribute('data-old', this.value)" onchange="window.changeStatus(${p.originalIndex},this.value)">
+                ${statusOptions.map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${s}</option>`).join('')}</select></td>
+            <td style="width: 90px; font-size:10px">${p.date || ''}</td>
+            <td style="min-width: 150px;" contenteditable="${!isLocked}" data-old="${rNote}" onfocus="this.setAttribute('data-old', this.innerText)" onblur="if(this.getAttribute('data-old')!=this.innerText){ window.addToActivityLog('سجل المتابعة', this.getAttribute('data-old'), this.innerText, '${pIden}'); window.updateField(${p.originalIndex},'rowNote',this.innerText); }">${rNote}</td>
+            </tr>`;
+    });
+
+    applyFilters();
+}
+
+function updateTableHeaders(type) {
+    const header = document.getElementById('dynamicHeader');
+    if(!header) return;
+    let dynamic = (type === "جوال" || type === "بيانات") 
+        ? `<th style="width: 130px;">رقم السريال</th><th class="col-contact" style="width: 120px;">رقم التواصل</th><th style="width: 120px;">هوية المستخدم</th>` 
+        : `<th style="width: 130px;">رقم الكبينة</th><th style="width: 120px;">الإحداثيات</th><th style="width: 120px;">المدينة</th>`;
+
+    // تم وضع المثلث الصغير بجوار كلمة الحالة في نفس السطر أفقياً
+    header.innerHTML = `
+        <th style="width: 35px;">
+            <input type="checkbox" id="checkAllBox" onclick="window.toggleAll(this)">
+        </th>
+        <th style="width: 100px;">نوع المنتج</th>
+        <th style="width: 180px;">تفاصيل المنتج</th>
+        <th style="width: 50px;">العدد</th>
+        <th style="width: 80px;">الاشتراك</th>
+        <th style="width: 85px;">الإجمالي</th>
+        ${dynamic}
+        <th style="width: 110px; position:relative; overflow:visible;">
+            <div class="custom-filter-wrapper">
+                <div class="filter-title" onclick="window.toggleCustomFilter(event, 'statusFilterMenu')">
+                    <span>الحالة</span>
+                    <i class="fas fa-caret-down filter-arrow"></i>
+                    <span class="filter-dot" id="statusFilterDot"></span>
+                </div>
+                <div id="statusFilterMenu" class="multi-select-menu" onclick="event.stopPropagation()">
+                    <div style="display: flex; gap: 4px; padding: 2px 4px 6px 4px; border-bottom: 1px solid #f1f5f9; margin-bottom: 4px;">
+                        <button type="button" onclick="window.selectAllFilter('statusFilterMenu')" style="flex:1; background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; border-radius:4px; padding:3px; font-size:9px; font-weight:700; cursor:pointer; font-family:Cairo;">الكل</button>
+                        <button type="button" onclick="window.clearAllFilter('statusFilterMenu')" style="flex:1; background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:4px; padding:3px; font-size:9px; font-weight:700; cursor:pointer; font-family:Cairo;">تفريغ</button>
+                    </div>
+                    <div id="statusFilterItemsContainer" style="display:flex; flex-direction:column; gap:2px;"></div>
+                </div>
+            </div>
+        </th>
+        <th style="width: 90px;">تاريخ الحالة</th>
+        <th style="min-width: 150px;">سجل المتابعة</th>
+    `;
+    populateStatusFilterMenu();
+}
+
+// بناء عناصر قائمة فرز الحالة
+function populateStatusFilterMenu() {
+    const container = document.getElementById('statusFilterItemsContainer');
+    if (!container) return;
+    container.innerHTML = statusOptions.map(opt => `
+        <label class="multi-select-item">
+            <input type="checkbox" value="${escapeHTML(opt)}" ${activeStatusFilters.includes(opt) ? 'checked' : ''} onchange="window.updateStatusFilters()">
+            <span class="custom-cb"><i class="fas fa-check"></i></span>
+            <span>${escapeHTML(opt)}</span>
+        </label>
+    `).join('');
+    updateStatusFilterDot();
+}
+
+function toggleCustomFilter(event, menuId) {
+    if (event) event.stopPropagation();
+    const targetMenu = document.getElementById(menuId);
+    if (!targetMenu) return;
+
+    const wrapper = targetMenu.closest('.custom-filter-wrapper');
+    const isAlreadyOpen = targetMenu.classList.contains('show');
+
+    document.querySelectorAll('.multi-select-menu.show').forEach(m => {
+        if (m !== targetMenu) {
+            m.classList.remove('show');
+            const w = m.closest('.custom-filter-wrapper');
+            if (w) w.classList.remove('active');
+        }
+    });
+
+    if (isAlreadyOpen) {
+        targetMenu.classList.remove('show');
+        if (wrapper) wrapper.classList.remove('active');
+    } else {
+        targetMenu.classList.add('show');
+        if (wrapper) wrapper.classList.add('active');
+    }
+}
+window.toggleCustomFilter = toggleCustomFilter;
+
+// تحديد الكل داخل قائمة فرز الحالة (تظهر كل الصفوف)
+function selectAllFilter(menuId) {
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+    updateStatusFilters();
+}
+window.selectAllFilter = selectAllFilter;
+
+// تفريغ كافة التحديدات داخل قائمة فرز الحالة (يختفي كل الصفوف)
+function clearAllFilter(menuId) {
+    const menu = document.getElementById(menuId);
+    if (!menu) return;
+    menu.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    updateStatusFilters();
+}
+window.clearAllFilter = clearAllFilter;
+
+function updateStatusFilters() {
+    const checkedBoxes = Array.from(document.querySelectorAll('#statusFilterMenu input[type="checkbox"]:checked'));
+    activeStatusFilters = checkedBoxes.map(cb => cb.value);
+    updateStatusFilterDot();
+    applyFilters();
+}
+window.updateStatusFilters = updateStatusFilters;
+
+function updateStatusFilterDot() {
+    const dot = document.getElementById('statusFilterDot');
+    if (dot) {
+        dot.style.display = (activeStatusFilters.length < statusOptions.length) ? 'inline-block' : 'none';
+    }
+}
+
+function updateStatsBox() {
+    const dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}')[currentOrderId] || [];
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    let totalOkAmount = 0, totalWaitAmount = 0, monthOkAmount = 0, monthWaitAmount = 0;
+    dbData.forEach(p => {
+        const productTotal = (parseInt(p.qty) || 0) * (parseFloat(p.sub) || 0);
+        if (p.status === "مكتمل") totalOkAmount += productTotal;
+        if (p.status === "معلق") totalWaitAmount += productTotal;
+        const parts = (p.date || "").split('/');
+        if (parts.length === 3 && parseInt(parts[1]) === currentMonth && parseInt(parts[2]) === currentYear) {
+            if (p.status === "مكتمل") monthOkAmount += productTotal;
+            if (p.status === "معلق") monthWaitAmount += productTotal;
+        }
+    });
+    if(document.getElementById('stat_total_ok')) document.getElementById('stat_total_ok').innerText = formatNumberWithOneDecimal(totalOkAmount);
+    if(document.getElementById('stat_total_wait')) document.getElementById('stat_total_wait').innerText = formatNumberWithOneDecimal(totalWaitAmount);
+    if(document.getElementById('stat_month_ok')) document.getElementById('stat_month_ok').innerText = formatNumberWithOneDecimal(monthOkAmount);
+    if(document.getElementById('stat_month_wait')) document.getElementById('stat_month_wait').innerText = formatNumberWithOneDecimal(monthWaitAmount);
+}
+
+async function updateField(idx, f, v) {
+    let dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+    if (!dbData[currentOrderId]) dbData[currentOrderId] = [];
+    let item = dbData[currentOrderId][idx];
+    if(!item) return;
+    item[f] = v.trim(); 
+    item.updatedAt = Date.now(); 
+
+    localStorage.setItem('asgate_products_db', JSON.stringify(dbData));
+    calculateTotals();
+    updateStatsBox();
+
+    if (item.docId && db) {
+        try {
+            await setDoc(doc(db, "products", item.docId), item, { merge: true });
+        } catch(e) {
+            console.error("خطأ التعديل السحابي:", e);
+        }
+    }
+}
+
+async function changeStatus(idx, s) {
+    let dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+    if (!dbData[currentOrderId]) dbData[currentOrderId] = [];
+    let item = dbData[currentOrderId][idx];
+    if(!item) return;
+    const oldS = item.status;
+    
+    const pIden = item.mobile || item.serial || item.name;
+    addToActivityLog('الحالة', oldS, s, pIden);
+    item.status = s; 
+    item.updatedAt = Date.now(); 
+    item.date = new Date().toLocaleDateString('en-GB');
+
+    localStorage.setItem('asgate_products_db', JSON.stringify(dbData));
+    renderProducts();
+
+    if (item.docId && db) {
+        try {
+            await setDoc(doc(db, "products", item.docId), item, { merge: true });
+        } catch(e) {
+            console.error("خطأ تعديل الحالة سحابياً:", e);
+        }
+    }
+}
+
+// حذف العناصر المحددة (من الصفوف الظاهرة فقط)
+async function deleteSelected() {
+    const chks = Array.from(document.querySelectorAll('.row-checkbox:checked')).filter(c => isRowVisible(c.closest('tr')));
+    if(chks.length === 0) {
+        if (typeof Swal !== 'undefined') Swal.fire('تنبيه', 'الرجاء تحديد منتج واحد على الأقل من الظاهرين للحذف.', 'warning');
+        else alert('الرجاء تحديد منتج واحد على الأقل من الظاهرين للحذف.');
+        return;
+    }
+    
+    let confirmed = false;
+    if (typeof Swal !== 'undefined') {
+        const result = await Swal.fire({
+            title: 'تأكيد الحذف؟',
+            text: `هل أنت متأكد من حذف (${chks.length}) منتجات من الظاهرين؟`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء'
+        });
+        confirmed = result.isConfirmed;
+    } else {
+        confirmed = confirm(`هل أنت متأكد من حذف (${chks.length}) منتجات من الظاهرين؟`);
+    }
+
+    if (confirmed) {
+        let dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+        let orderItems = dbData[currentOrderId] || [];
+        const docIdsToDelete = [];
+        const indexesToDelete = [];
+        
+        chks.forEach(chk => {
+            const docId = chk.dataset.docid;
+            const idx = parseInt(chk.dataset.index);
+            if (docId) docIdsToDelete.push(docId);
+            if (!isNaN(idx)) indexesToDelete.push(idx);
+        });
+
+        for (let docId of docIdsToDelete) {
+            if (db) {
+                try {
+                    await deleteDoc(doc(db, "products", docId));
+                } catch(e) {
+                    console.error("خطأ حذف المنتجات السحابية:", e);
+                }
+            }
+        }
+
+        dbData[currentOrderId] = orderItems.filter((p, i) => !docIdsToDelete.includes(p.docId) && !indexesToDelete.includes(i));
+        localStorage.setItem('asgate_products_db', JSON.stringify(dbData));
+        renderProducts();
+        if (typeof Swal !== 'undefined') Swal.fire('تم الحذف', 'تم حذف المنتجات المحددة بنجاح.', 'success');
+    }
+}
+
+// حساب المجاميع للظاهر فقط
+function calculateTotals() {
+    const visibleRows = Array.from(document.querySelectorAll('#productsBody tr')).filter(isRowVisible);
+    const checkedVisibleCount = visibleRows.filter(r => r.querySelector('.row-checkbox')?.checked).length;
+    
+    let q = 0, s = 0, t = 0; 
+    visibleRows.forEach(row => { 
+        const qtyInp = row.cells[3]?.innerText || row.cells[3]?.querySelector('input')?.value || '0';
+        const subInp = row.cells[4]?.innerText || row.cells[4]?.querySelector('input')?.value || '0';
+        const pQty = parseInt(qtyInp) || 0;
+        const pSub = parseFloat(String(subInp).replace(/,/g, '')) || 0;
+        q += pQty; 
+        s += pSub; 
+        t += (pQty * pSub); 
+    });
+
+    if(document.getElementById('f_selection')) document.getElementById('f_selection').innerText = checkedVisibleCount;
+    if(document.getElementById('f_count')) document.getElementById('f_count').innerText = visibleRows.length; 
+    if(document.getElementById('f_qty')) document.getElementById('f_qty').innerText = q; 
+    if(document.getElementById('f_sub')) document.getElementById('f_sub').innerText = formatNumberWithOneDecimal(s); 
+    if(document.getElementById('f_total')) document.getElementById('f_total').innerText = formatNumberWithOneDecimal(t);
+    
+    // تحديث قيمة الطلب الإجمالية في البطاقة العلوية
+    if(document.getElementById('orderTotalSum')) document.getElementById('orderTotalSum').innerText = formatNumberWithOneDecimal(t) + ' ر.س';
+}
+
+async function saveProduct() {
+    const type = document.getElementById('p_type').value;
+    const name = document.getElementById('p_name').value || "بدون تفاصيل";
+    const qty = parseInt(document.getElementById('p_qty').value) || 1;
+    const sub = parseFloat(document.getElementById('p_sub').value) || 0;
+    let serial = document.getElementById('p_serial').value || "";
+    let isAuto = document.getElementById('auto_serial').checked;
+    
+    const baseTime = Date.now();
+    const orderKey = currentOrderId || "0000";
+
+    let dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+    if (!dbData[orderKey]) dbData[orderKey] = [];
+
+    if(isAuto && ["جوال", "بيانات"].includes(type) && serial !== "") {
+        for(let i=0; i<qty; i++){ 
+            const newDocId = `prod_${baseTime}_${i}`;
+            const newItem = {
+                docId: newDocId,
+                orderId: orderKey, type, name, qty:1, sub, serial, mobile: "", user: "", status:"جديد", date:new Date().toLocaleDateString('en-GB'), updatedAt: baseTime - i, rowNote: ""
+            };
+            dbData[orderKey].push(newItem);
+            if (db) await setDoc(doc(db, "products", newDocId), newItem);
+            addToActivityLog('إضافة منتج جديد', '', `${name} (باقة: ${type})`, serial);
+            serial = serial.replace(/(\d+)(?!.*\d)/, n => (BigInt(n)+1n).toString().padStart(n.length, '0')); 
+        }
+    } else { 
+        const newDocId = `prod_${baseTime}`;
+        const newItem = { 
+            docId: newDocId,
+            orderId: orderKey, type, name, qty, sub, serial:(["جوال", "بيانات"].includes(type)?serial:""), mobile: "", user: "", status:"جديد", date:new Date().toLocaleDateString('en-GB'), updatedAt: baseTime, rowNote: "" 
+        };
+        dbData[orderKey].push(newItem);
+        if (db) await setDoc(doc(db, "products", newDocId), newItem);
+        addToActivityLog('إضافة منتج جديد', '', `${name} (باقة: ${type})`, newItem.serial || newItem.name);
+    }
+    
+    localStorage.setItem('asgate_products_db', JSON.stringify(dbData));
+    renderProducts();
+    closeModal();
+}
+
+// تطبيق الفلترة الدقيقة (البحث + فرز الحالة)
+function applyFilters() {
+    const q = (document.getElementById('liveSearch')?.value || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('#productsBody tr');
+    
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        const matchesSearch = !q || text.includes(q);
+        
+        let matchesStatus = true;
+        // فحص فرز الحالة:
+        if (totalStatusOptionsCount > 0) {
+            // عند الضغط على تفريغ: يختفي كل الصفوف
+            if (activeStatusFilters.length === 0) {
+                matchesStatus = false;
+            } else if (activeStatusFilters.length < totalStatusOptionsCount) {
+                const statusSelect = row.querySelector('.status-select');
+                const statusVal = statusSelect ? statusSelect.value : '';
+                matchesStatus = activeStatusFilters.includes(statusVal);
+            } else {
+                // عند الكل: تظهر كل الصفوف
+                matchesStatus = true;
+            }
+        }
+        
+        const shouldShow = matchesSearch && matchesStatus;
+        row.style.display = shouldShow ? '' : 'none';
+        
+        // إلغاء تحديد الصفوف التي أصبحت مخفية
+        if (!shouldShow) {
+            const chk = row.querySelector('.row-checkbox');
+            if (chk) chk.checked = false;
+        }
+    });
+
+    updateMasterCheckboxState();
+    calculateTotals();
+}
+
+function openModal() { 
+    const m = document.getElementById('productModal');
+    if(m) m.style.display = 'flex'; 
+    document.getElementById('p_qty').value = "1";
+    document.getElementById('p_sub').value = "";
+    document.getElementById('p_serial').value = "";
+    handleTypeChange(); 
+}
+function closeModal() { const m = document.getElementById('productModal'); if(m) m.style.display = 'none'; }
+function handleTypeChange() {
+    const type = document.getElementById('p_type').value;
+    const isMobile = (type === "جوال" || type === "بيانات");
+    document.getElementById('p_serial').disabled = !isMobile;
+    document.getElementById('auto_serial').disabled = !isMobile;
+}
+
+// تصدير الإكسيل (للمحدد من الظاهرين فقط، أو كافة الظاهرين إن لم يُحدد شيء)
+function exportToExcel() {
+    const visibleRows = Array.from(document.querySelectorAll('#productsBody tr')).filter(isRowVisible);
+    const checkedRows = visibleRows.filter(r => r.querySelector('.row-checkbox')?.checked);
+    
+    const rowsToExport = checkedRows.length > 0 ? checkedRows : visibleRows;
+    
+    if (rowsToExport.length === 0) {
+        alert('لا توجد بيانات ظاهرة للتصدير');
+        return;
+    }
+
+    const exportData = rowsToExport.map(row => {
+        const type = row.cells[1]?.innerText || '';
+        const name = row.cells[2]?.innerText || '';
+        const qty = parseInt(row.cells[3]?.innerText) || 1;
+        const sub = parseFloat(String(row.cells[4]?.innerText || '').replace(/,/g, '')) || 0;
+        const total = parseFloat(String(row.cells[5]?.innerText || '').replace(/,/g, '')) || (qty * sub);
+        const col6 = row.cells[6]?.innerText || '';
+        const col7 = row.cells[7]?.innerText || '';
+        const col8 = row.cells[8]?.innerText || '';
+        const status = row.querySelector('.status-select')?.value || '';
+        const date = row.cells[10]?.innerText || '';
+        const rowNote = row.cells[11]?.innerText || '';
+
+        return {
+            "نوع المنتج": type,
+            "تفاصيل المنتج": name,
+            "العدد": qty,
+            "الاشتراك": sub,
+            "الإجمالي": total,
+            "السريال / الكبينة": col6,
+            "رقم التواصل / الإحداثيات": col7,
+            "المستخدم / المدينة": col8,
+            "الحالة": status,
+            "تاريخ الحالة": date,
+            "سجل المتابعة": rowNote
+        };
+    });
+
+    if (typeof XLSX !== 'undefined') {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Details");
+        XLSX.writeFile(wb, `Order_${currentOrderId}.xlsx`);
+    } else {
+        alert('مكتبة الإكسيل غير محملة');
+    }
+}
+
+async function handleExcelImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        try {
+            if (typeof XLSX !== 'undefined') {
+                alert('مكتبة الإكسيل غير محملة');
+                return;
+            }
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet);
+            
+            if (rows.length === 0) {
+                if (typeof Swal !== 'undefined') Swal.fire('تنبيه', 'الملف المرفق فارغ!', 'warning');
+                return;
+            }
+
+            let dbData = JSON.parse(localStorage.getItem('asgate_products_db') || '{}');
+            const orderKey = currentOrderId || "0000";
+            if (!dbData[orderKey]) dbData[orderKey] = [];
+            
+            const baseTime = Date.now();
+            let addedCount = 0;
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                
+                const type = row["نوع المنتج"] || row["type"] || "جوال";
+                const name = row["تفاصيل المنتج"] || row["name"] || "بدون تفاصيل";
+                const qty = parseInt(row["العدد"] || row["qty"]) || 1;
+                const sub = parseFloat(row["الاشتراك"] || row["sub"]) || 0;
+                
+                const serial = (row["رقم السريال"] || row["serial"] || "").toString();
+                const mobile = (row["رقم التواصل"] || row["رقم الخدمة"] || row["mobile"] || "").toString();
+                const user = (row["هوية المستخدم"] || row["user"] || "").toString();
+                const sai = (row["رقم الكبينة"] || row["sai"] || "").toString();
+                const coords = (row["الإحداثيات"] || row["coords"] || "").toString();
+                const city = (row["المدينة"] || row["city"] || "").toString();
+                
+                let parsedStatus = row["الحالة"] || row["status"] || "جديد";
+                if (!statusOptions.includes(parsedStatus)) parsedStatus = "جديد";
+                
+                const rowNote = (row["سجل المتابعة"] || row["rowNote"] || "").toString();
+                const date = row["تاريخ الحالة"] || row["date"] || new Date().toLocaleDateString('en-GB');
+
+                const newDocId = `prod_${baseTime}_${i}`;
+                const newItem = {
+                    docId: newDocId,
+                    orderId: orderKey, type, name, qty, sub, serial, mobile, user, sai, coords, city, status: parsedStatus, date, updatedAt: baseTime + i, rowNote
+                };
+                
+                dbData[orderKey].push(newItem);
+                if (db) {
+                    try {
+                        await setDoc(doc(db, "products", newDocId), newItem);
+                    } catch (err) {
+                        console.error("خطأ أثناء الحفظ السحابي للمنتج المستورد:", err);
+                    }
+                }
+                addedCount++;
+            }
+            
+            localStorage.setItem('asgate_products_db', JSON.stringify(dbData));
+            renderProducts();
+            addToActivityLog('زر إجراء', '', `استيراد ${addedCount} منتج من ملف Excel`, '');
+            if (typeof Swal !== 'undefined') Swal.fire('نجاح', `تم استيراد ${addedCount} منتجات بنجاح!`, 'success');
+            
+        } catch (err) {
+            console.error(err);
+            if (typeof Swal !== 'undefined') Swal.fire('خطأ', 'حدث خطأ أثناء قراءة ملف الإكسيل!', 'error');
+        }
+        event.target.value = "";
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function getGlobalNotesArray() {
+    const raw = localStorage.getItem(GLOBAL_NOTES_KEY) || '[]';
+    try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+    } catch(e) {}
+    return [];
+}
+
+function openGlobalNote() {
+    const btn = document.getElementById('globalNotesBtn');
+    let arr = getGlobalNotesArray();
+    
+    if (btn) btn.setAttribute('data-full-notes', JSON.stringify(arr));
+
+    const historyLog = document.getElementById('historyLog');
+    const days = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+    if (historyLog) {
+        historyLog.innerHTML = arr.map((msg, index) => {
+            let msgDateObj = new Date(msg.date);
+            let dayStr = isNaN(msgDateObj.getTime()) ? '' : days[msgDateObj.getDay()] + ' ';
+            let userName = msg.user && msg.user !== "المستخدم" ? msg.user : "أحمد";
+
+            let showDelete = true;
+            if (msg.date && msg.time) {
+                let noteDateTime = new Date(`${msg.date}T${msg.time}:00`);
+                if (!isNaN(noteDateTime.getTime())) {
+                    let diffInHours = (new Date() - noteDateTime) / (1000 * 60 * 60);
+                    if (diffInHours > 24) {
+                        showDelete = false; 
+                    }
+                }
+            }
+            
+            let deleteBtnHtml = showDelete ? `<i class="fas fa-trash-alt delete-note-btn" onclick="deleteGlobalNote(${index})" title="حذف الملاحظة"></i>` : '';
+
+            return `
+            <div class="note-item">
+                <div class="note-header">
+                    <span class="note-meta">
+                        <span class="note-user"><i class="fas fa-user-circle"></i> ${escapeHTML(userName)}</span>
+                        <span dir="ltr"><i class="far fa-calendar-alt"></i> ${escapeHTML(dayStr)}${escapeHTML(msg.date)}</span>
+                        <span dir="ltr"><i class="far fa-clock"></i> ${escapeHTML(msg.time)}</span>
+                    </span>
+                    ${deleteBtnHtml}
+                </div>
+                <div class="note-body">${msg.text}</div>
+            </div>
+            `;
+        }).join('') || '<div style="color:#64748b; text-align:center; font-size:11px; padding:20px; font-weight:700;">لا توجد ملاحظات سابقة</div>';
+    }
+    
+    const noteModal = document.getElementById('noteModal');
+    if (noteModal) {
+        noteModal.style.display = "flex";
+        if (historyLog) {
+            historyLog.scrollTop = historyLog.scrollHeight;
+        }
+    }
+    
+    const modalTextArea = document.getElementById('modalTextArea');
+    if (modalTextArea) { modalTextArea.value = ""; modalTextArea.focus(); }
+}
+
+function closeGlobalNote() {
+    const m = document.getElementById('noteModal');
+    if (m) m.style.display = "none";
+    const area = document.getElementById('modalTextArea');
+    if (area) area.value = "";
+}
+
+function saveGlobalNote() {
+    const area = document.getElementById('modalTextArea');
+    const txt = area ? area.value.trim() : "";
+    if (txt) {
+        let arr = getGlobalNotesArray();
+        arr.push({
+            user: "أحمد",
+            date: getTodayFormatted(),
+            time: getTimeFormatted(),
+            text: escapeHTML(txt)
+        });
+        
+        localStorage.setItem(GLOBAL_NOTES_KEY, JSON.stringify(arr));
+        
+        const btn = document.getElementById('globalNotesBtn');
+        if (btn) btn.setAttribute('data-full-notes', JSON.stringify(arr));
+    }
+    closeGlobalNote();
+}
+
+async function deleteGlobalNote(index) {
+    let confirmed = false;
+    if (typeof Swal !== 'undefined') {
+        const result = await Swal.fire({
+            title: 'تأكيد الحذف؟',
+            text: "هل أنت متأكد من حذف هذه الملاحظة؟",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#ef4444',
+            cancelButtonColor: '#94a3b8',
+            confirmButtonText: 'نعم، احذف',
+            cancelButtonText: 'إلغاء'
+        });
+        confirmed = result.isConfirmed;
+    } else {
+        confirmed = confirm("هل أنت متأكد من حذف هذه الملاحظة؟");
+    }
+
+    if (confirmed) {
+        let arr = getGlobalNotesArray();
+        arr.splice(index, 1);
+        
+        localStorage.setItem(GLOBAL_NOTES_KEY, JSON.stringify(arr));
+        const btn = document.getElementById('globalNotesBtn');
+        if (btn) btn.setAttribute('data-full-notes', JSON.stringify(arr));
+        
+        openGlobalNote();
+    }
+}
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    let fileName = prompt("أدخل اسم للمرفق لحفظه في السجل:", file.name);
+    if (fileName === null) {
+        event.target.value = ''; 
+        return; 
+    }
+    if (fileName.trim() === "") fileName = file.name;
+
+    let arr = getGlobalNotesArray();
+    arr.push({
+        user: "أحمد",
+        date: getTodayFormatted(),
+        time: getTimeFormatted(),
+        text: `<i class="fas fa-file-alt"></i> تم إرفاق ملف: ${escapeHTML(fileName)}`
+    });
+    
+    localStorage.setItem(GLOBAL_NOTES_KEY, JSON.stringify(arr));
+    const btn = document.getElementById('globalNotesBtn');
+    if (btn) btn.setAttribute('data-full-notes', JSON.stringify(arr));
+    
+    openGlobalNote();
+    event.target.value = ''; 
+}
+
+// إغلاق القوائم المنسدلة عند النقر بالخارج
+window.addEventListener('click', (e) => {
+    if (!e.target.closest('.custom-filter-wrapper')) {
+        document.querySelectorAll('.multi-select-menu.show').forEach(m => {
+            m.classList.remove('show');
+            const w = m.closest('.custom-filter-wrapper');
+            if (w) w.classList.remove('active');
+        });
+    }
+});
+
+Object.assign(window, {
+    toggleLogExpansion,
+    addToActivityLog,
+    triggerActionLog,
+    loadOrderDetails,
+    validateNumberInput,
+    updateTableHeaders,
+    updateField,
+    changeStatus,
+    deleteSelected,
+    calculateTotals,
+    saveProduct,
+    applyFilters,
+    toggleAll,
+    openModal,
+    closeModal,
+    handleTypeChange,
+    exportToExcel,
+    handleExcelImport,
+    openGlobalNote,
+    closeGlobalNote,
+    saveGlobalNote,
+    deleteGlobalNote,
+    handleFileUpload,
+    toggleCustomFilter,
+    selectAllFilter,
+    clearAllFilter,
+    updateStatusFilters,
+    updateMasterCheckboxState,
+    isRowVisible,
+    setupScrollSync
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadOrderDetails();
+});
